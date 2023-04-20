@@ -1,5 +1,8 @@
 package com.shepherdmoney.interviewproject.model;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +25,21 @@ public class User {
 
     private String email;
 
-    // TODO: User's credit card
-    // HINT: A user can have one or more, or none at all. We want to be able to query credit cards by user
-    //       and user by a credit card.
+        @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL)
+        private List<CreditCard> creditCards = new ArrayList<>();
+
+        public User(String name, String email){
+            this.name = name;
+            this.email = email;
+        }
+    
+        public void addCreditCard(CreditCard creditCard) {
+            creditCards.add(creditCard);
+            creditCard.setOwner(this);
+        }
+    
+        public void removeCreditCard(CreditCard creditCard) {
+            creditCards.remove(creditCard);
+            creditCard.setOwner(null);
+        }
 }

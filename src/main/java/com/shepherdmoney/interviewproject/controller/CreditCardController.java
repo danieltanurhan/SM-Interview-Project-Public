@@ -1,54 +1,165 @@
 package com.shepherdmoney.interviewproject.controller;
 
+import com.shepherdmoney.interviewproject.model.BalanceHistory;
+import com.shepherdmoney.interviewproject.model.CreditCard;
+import com.shepherdmoney.interviewproject.model.User;
+import com.shepherdmoney.interviewproject.repository.CreditCardRepository;
+import com.shepherdmoney.interviewproject.repository.UserRepository;
 import com.shepherdmoney.interviewproject.vo.request.AddCreditCardToUserPayload;
 import com.shepherdmoney.interviewproject.vo.request.UpdateBalancePayload;
 import com.shepherdmoney.interviewproject.vo.response.CreditCardView;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
-
+/**
+ * The CreditCardController class handles incoming requests related to credit card operations.
+ * 
+ * This class is annotated with @RestController. It uses the CreditCardRepository and UserRepository interfaces
+ * to interact with the database and retrieve credit card and user information.
+ * 
+ * The CreditCardController class contains endpoints for managing credit cards.
+ * Endpoints:
+ * POST /credit-card: Add a credit card to a user
+ * GET /credit-card:all: Retrieve all credit cards associated with a user
+ * GET /credit-card:user-id: Retrieve the user ID associated with a given credit card number
+ * POST /credit-card:update-balance: Update the balance history of a credit card
+ * GET /credit-card:balance-history: Retrieve a list of balance history for a given credit card number
+ */
 @RestController
 public class CreditCardController {
 
-    // TODO: wire in CreditCard repository here (~1 line)
+    @Autowired
+    private CreditCardRepository creditCardRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    /**
+     * Adds a credit card to the user with the specified user ID.
+     *
+     * @param payload the payload containing the user ID, card issuance bank, and card number
+     * @return a ResponseEntity with the HTTP status code and the ID of the newly created credit card
+     */
     @PostMapping("/credit-card")
     public ResponseEntity<Integer> addCreditCardToUser(@RequestBody AddCreditCardToUserPayload payload) {
-        // TODO: Create a credit card entity, and then associate that credit card with user with given userId
-        //       Return 200 OK with the credit card id if the user exists and credit card is successfully associated with the user
-        //       Return other appropriate response code for other exception cases
-        //       Do not worry about validating the card number, assume card number could be any arbitrary format and length
-        return null;
+        int userId = payload.getUserId();
+        
+        // Check if the userId exists
+        if(!userRepository.existsById(userId)) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        User user = userRepository.getReferenceById(userId);
+        CreditCard creditCard = new CreditCard(payload.getCardIssuanceBank(), payload.getCardNumber(), user);
+        user.addCreditCard(creditCard);
+
+        // Save the credit card to the database and return its ID
+        creditCardRepository.save(creditCard);
+        return ResponseEntity.ok(creditCard.getId());
     }
 
+    /**
+     * Retrieves all credit cards associated with a given user ID.
+     * 
+     * @param userId the ID of the user to retrieve credit cards for
+     * @return a list of {@link CreditCardView} objects representing the credit cards
+     * @throws BadRequestException if the user with the given ID does not exist
+     */
     @GetMapping("/credit-card:all")
     public ResponseEntity<List<CreditCardView>> getAllCardOfUser(@RequestParam int userId) {
-        // TODO: return a list of all credit card associated with the given userId, using CreditCardView class
-        //       if the user has no credit card, return empty list, never return null
-        return null;
+        Optional<User> optionalUser = userRepository.findById(userId);
+        if(optionalUser.isPresent()) {
+            List<CreditCard> creditCards = optionalUser.get().getCreditCards();
+        
+        //Convert CreditCard object to CreditCardView objects
+        List<CreditCardView> creditCardViews = creditCards.stream()
+                .map(creditCard -> new CreditCardView(creditCard.getIssuanceBank(), creditCard.getNumber()))
+                .collect(Collectors.toList());
+
+                return ResponseEntity.ok(creditCardViews);
+        } else {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
+    /**
+    * Returns the user ID associated with the given credit card number.
+    * 
+    * @param creditCardNumber the number of the credit card to check
+    * @return a ResponseEntity with the user ID if the credit card is found, or a bad request status if it is not found
+    */
     @GetMapping("/credit-card:user-id")
     public ResponseEntity<Integer> getUserIdForCreditCard(@RequestParam String creditCardNumber) {
-        // TODO: Given a credit card number, efficiently find whether there is a user associated with the credit card
-        //       If so, return the user id in a 200 OK response. If no such user exists, return 400 Bad Request
-        return null;
+        CreditCard creditCard = creditCardRepository.findByNumber(creditCardNumber);
+        if(creditCard == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(creditCard.getOwner().getId());
     }
 
+    /**
+     * Update the balance history of a credit card.
+     *
+     * @param payload An array of UpdateBalancePayload objects containing information about each transaction.
+     * @return A ResponseEntity with a message indicating whether the balance was updated successfully or not.
+     */
     @PostMapping("/credit-card:update-balance")
-    public SomeEnityData postMethodName(@RequestBody UpdateBalancePayload[] payload) {
-        //TODO: Given a list of transactions, update credit cards' balance history.
-        //      For example: if today is 4/12, a credit card's balanceHistory is [{date: 4/12, balance: 110}, {date: 4/10, balance: 100}],
-        //      Given a transaction of {date: 4/10, amount: 10}, the new balanceHistory is
-        //      [{date: 4/12, balance: 120}, {date: 4/11, balance: 110}, {date: 4/10, balance: 110}]
-        //      Return 200 OK if update is done and successful, 400 Bad Request if the given card number
-        //        is not associated with a card.
+    public ResponseEntity<String> updateBalance(@RequestBody UpdateBalancePayload[] payload) {
+        for(UpdateBalancePayload transaction : payload) {
+            // Find the credit card based on the card number
+            CreditCard creditCard = creditCardRepository.findByNumber(transaction.getCreditCardNumber());
+            if(creditCard == null) {
+                return ResponseEntity.badRequest().body("Invalid card number");
+            }
+            
+            // Create a new balance history object for the transaction
+            BalanceHistory balance = new BalanceHistory(transaction.getTransactionTime(), transaction.getCurrentBalance());
+            balance.setCreditCard(creditCard);
+            creditCard.addBalanceHistory(balance);
+            creditCardRepository.save(creditCard);
+        }
+        return ResponseEntity.ok("Balance updated successfully.");
+    }
+
+    /**
+     * Returns a list of balance history for a given credit card number.
+     * 
+     * @param number the credit card number
+     * @return a list of balance history, represented as a list of maps containing the date and balance.
+     * If the credit card number is invalid, returns a bad request response.
+     */
+    @GetMapping("/credit-card:balance-history")
+    public ResponseEntity<List<Map<String, String>>> getBalanceHistory(@RequestParam String number){
+        CreditCard creditCard = creditCardRepository.findByNumber(number);
+        if(creditCard == null) {
+            return ResponseEntity.badRequest().build();
+        }
         
-        return null;
+        // Map list of BalanceHistory objects to maps containing date and balance 
+        List<Map<String, String>> balanceHistoryList = creditCard.getBalanceHistory().stream()
+            .map(balanceHistory -> {
+                Map<String, String> map = new HashMap<>();
+                map.put("date", balanceHistory.getDate().toString().substring(0, 10));
+                map.put("balance", ""+ balanceHistory.getBalance());
+                return map;
+            })
+            .collect(Collectors.toList());
+        
+        return ResponseEntity.ok(balanceHistoryList);
     }
     
 }
