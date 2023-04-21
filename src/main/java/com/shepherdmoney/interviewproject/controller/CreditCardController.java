@@ -3,16 +3,20 @@ package com.shepherdmoney.interviewproject.controller;
 import com.shepherdmoney.interviewproject.model.BalanceHistory;
 import com.shepherdmoney.interviewproject.model.CreditCard;
 import com.shepherdmoney.interviewproject.model.User;
+import com.shepherdmoney.interviewproject.repository.BalanceHistoryRepository;
 import com.shepherdmoney.interviewproject.repository.CreditCardRepository;
 import com.shepherdmoney.interviewproject.repository.UserRepository;
 import com.shepherdmoney.interviewproject.vo.request.AddCreditCardToUserPayload;
 import com.shepherdmoney.interviewproject.vo.request.UpdateBalancePayload;
 import com.shepherdmoney.interviewproject.vo.response.CreditCardView;
 
+import jakarta.transaction.Transactional;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +48,9 @@ public class CreditCardController {
 
     @Autowired
     private UserRepository userRepository;
+    
+    @Autowired
+    private BalanceHistoryRepository balanceHistoryRepository;
 
     /**
      * Adds a credit card to the user with the specified user ID.
@@ -52,6 +59,7 @@ public class CreditCardController {
      * @return a ResponseEntity with the HTTP status code and the ID of the newly created credit card
      */
     @PostMapping("/credit-card")
+    @Transactional
     public ResponseEntity<Integer> addCreditCardToUser(@RequestBody AddCreditCardToUserPayload payload) {
         int userId = payload.getUserId();
         
@@ -62,7 +70,6 @@ public class CreditCardController {
 
         User user = userRepository.getReferenceById(userId);
         CreditCard creditCard = new CreditCard(payload.getCardIssuanceBank(), payload.getCardNumber(), user);
-        user.addCreditCard(creditCard);
 
         // Save the credit card to the database and return its ID
         creditCardRepository.save(creditCard);
@@ -80,7 +87,7 @@ public class CreditCardController {
     public ResponseEntity<List<CreditCardView>> getAllCardOfUser(@RequestParam int userId) {
         Optional<User> optionalUser = userRepository.findById(userId);
         if(optionalUser.isPresent()) {
-            List<CreditCard> creditCards = optionalUser.get().getCreditCards();
+            List<CreditCard> creditCards = creditCardRepository.findByOwner(userId);
         
         //Convert CreditCard object to CreditCardView objects
         List<CreditCardView> creditCardViews = creditCards.stream()
@@ -115,6 +122,7 @@ public class CreditCardController {
      * @return A ResponseEntity with a message indicating whether the balance was updated successfully or not.
      */
     @PostMapping("/credit-card:update-balance")
+    @Transactional
     public ResponseEntity<String> updateBalance(@RequestBody UpdateBalancePayload[] payload) {
         for(UpdateBalancePayload transaction : payload) {
             // Find the credit card based on the card number
@@ -124,10 +132,9 @@ public class CreditCardController {
             }
             
             // Create a new balance history object for the transaction
-            BalanceHistory balance = new BalanceHistory(transaction.getTransactionTime(), transaction.getCurrentBalance());
-            balance.setCreditCard(creditCard);
-            creditCard.addBalanceHistory(balance);
-            creditCardRepository.save(creditCard);
+            BalanceHistory balance = new BalanceHistory(transaction.getTransactionTime(), transaction.getCurrentBalance(), creditCard);
+            
+            balanceHistoryRepository.save(balance);
         }
         return ResponseEntity.ok("Balance updated successfully.");
     }
@@ -145,9 +152,12 @@ public class CreditCardController {
         if(creditCard == null) {
             return ResponseEntity.badRequest().build();
         }
+
+        //Get List of balance history from repository
+        List<BalanceHistory> list = balanceHistoryRepository.findByCreditCard(creditCard.getId());
         
         // Map list of BalanceHistory objects to maps containing date and balance 
-        List<Map<String, String>> balanceHistoryList = creditCard.getBalanceHistory().stream()
+        List<Map<String, String>> balanceHistoryList = list.stream()
             .map(balanceHistory -> {
                 Map<String, String> map = new HashMap<>();
                 map.put("date", balanceHistory.getDate().toString().substring(0, 10));
@@ -155,6 +165,9 @@ public class CreditCardController {
                 return map;
             })
             .collect(Collectors.toList());
+
+        //Sort from newest to oldest date    
+        Collections.sort(balanceHistoryList, (bh1, bh2) -> bh2.get("date").compareTo(bh1.get("date")));
         
         return ResponseEntity.ok(balanceHistoryList);
     }
