@@ -132,7 +132,7 @@ public class CreditCardController {
             }
             
             // Create a new balance history object for the transaction
-            BalanceHistory balance = new BalanceHistory(transaction.getTransactionTime(), transaction.getCurrentBalance(), creditCard);
+            BalanceHistory balance = new BalanceHistory(transaction.getTransactionTime(), transaction.getTransactionAmount(), creditCard);
             
             balanceHistoryRepository.save(balance);
         }
