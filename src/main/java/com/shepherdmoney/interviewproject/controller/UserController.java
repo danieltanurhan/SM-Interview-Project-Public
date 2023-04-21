@@ -1,8 +1,11 @@
 package com.shepherdmoney.interviewproject.controller;
 
 import com.shepherdmoney.interviewproject.model.User;
+import com.shepherdmoney.interviewproject.repository.CreditCardRepository;
 import com.shepherdmoney.interviewproject.repository.UserRepository;
 import com.shepherdmoney.interviewproject.vo.request.CreateUserPayload;
+
+import jakarta.transaction.Transactional;
 
 import java.util.Optional;
 
@@ -26,6 +29,9 @@ public class UserController {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private CreditCardRepository creditCardRepository;
     
     /**
      * Creates a new user with the provided name and email
@@ -48,13 +54,15 @@ public class UserController {
      * @return a response indicating whether the user was deleted successfully or if the user does not exist
      */
     @DeleteMapping("/user")
+    @Transactional
     public ResponseEntity<String> deleteUser(@RequestParam int userId) {
         Optional<User> optionalUser = userRepository.findById(userId);
         if(optionalUser.isPresent()) {
+            creditCardRepository.deleteAll(creditCardRepository.findByOwner(userId));
             userRepository.deleteById(userId);
             return ResponseEntity.ok("User deleted successfully.");
         } else {
-            return ResponseEntity.badRequest().body("User with ID " + userId + " does noty exist.");
+            return ResponseEntity.badRequest().body("User with ID " + userId + " does not exist.");
         }
     }
 }

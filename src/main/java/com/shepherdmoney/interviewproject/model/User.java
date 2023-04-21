@@ -14,7 +14,7 @@ import lombok.ToString;
 @Setter
 @ToString
 @RequiredArgsConstructor
-@Table(name = "MyUser")
+@Table(name = "My_User")
 public class User {
 
     @Id
@@ -25,21 +25,11 @@ public class User {
 
     private String email;
 
-        @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL)
-        private List<CreditCard> creditCards = new ArrayList<>();
+    @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<CreditCard> creditCards = new ArrayList<>();
 
-        public User(String name, String email){
-            this.name = name;
-            this.email = email;
-        }
-    
-        public void addCreditCard(CreditCard creditCard) {
-            creditCards.add(creditCard);
-            creditCard.setOwner(this);
-        }
-    
-        public void removeCreditCard(CreditCard creditCard) {
-            creditCards.remove(creditCard);
-            creditCard.setOwner(null);
-        }
+    public User(String name, String email){
+        this.name = name;
+        this.email = email;
+    }
 }
